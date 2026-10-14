@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>go-eino-memory 架构图</title>
+<style>
+  :root { --bg:#f6f7fb; --card:#fff; --ink:#1f2430; --muted:#5b6475; --line:#8a93a6;
+          --demo:#7c3aed; --agent:#2563eb; --llm:#c2410c; --mem:#15803d; --ext:#475569; --eino:#0f172a; --hl:#e11d48; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.6 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--ink); }
+  main { max-width:1080px; margin:0 auto; padding:28px 20px 60px; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  h2 { font-size:19px; margin:0 0 6px; }
+  .lead { color:var(--muted); margin:0 0 20px; }
+  section { background:var(--card); border-radius:12px; padding:20px 22px; margin-bottom:22px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  section > p.hint { color:var(--muted); margin:0 0 12px; font-size:14px; }
+  code { font-family:Consolas,"JetBrains Mono",monospace; font-size:.92em; background:#eef1f6; padding:1px 5px; border-radius:4px; }
+  svg { width:100%; height:auto; display:block; }
+  /* 图 1：包依赖 */
+  .node rect { fill:#fff; stroke-width:2.5; rx:10; }
+  .node text { font-size:15px; font-weight:600; text-anchor:middle; }
+  .node text.sub { font-size:12px; font-weight:400; fill:var(--muted); }
+  .node { cursor:pointer; outline:none; }
+  .node:focus rect, .node:hover rect { stroke-width:4; }
+  .edge { fill:none; stroke:var(--line); stroke-width:2; transition:opacity .2s, stroke .2s; }
+  .edge.dash { stroke-dasharray:7 5; }
+  .elabel { font-size:12px; fill:var(--muted); }
+  svg.focusing .edge, svg.focusing .node, svg.focusing .elabel { opacity:.18; }
+  svg.focusing .on { opacity:1 !important; }
+  svg.focusing .edge.on { stroke:var(--hl); stroke-width:3; }
+  .legend { display:flex; gap:22px; flex-wrap:wrap; font-size:13px; color:var(--muted); margin:8px 0 0; }
+  .legend span::before { content:""; display:inline-block; width:34px; vertical-align:middle; margin-right:6px; border-top:2px solid var(--line); }
+  .legend .l-dash::before { border-top-style:dashed; }
+  #info { margin-top:14px; border-left:4px solid var(--line); background:#f8fafc; padding:10px 14px; border-radius:6px; min-height:92px; }
+  #info h3 { margin:0 0 4px; font-size:16px; }
+  #info ul { margin:4px 0 0; padding-left:18px; }
+  /* 图 2：策略积木 */
+  .groups { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; }
+  .group h3 { font-size:15px; margin:0 0 8px; }
+  .blk { border:2px solid var(--mem); border-radius:9px; padding:8px 10px; margin:8px 0; background:#f0fdf4; }
+  .blk .t { font-weight:600; font-family:Consolas,monospace; font-size:14px; }
+  .blk .f { color:var(--muted); font-size:12px; }
+  .blk .blk { background:#fff; margin:6px 0 2px; }
+  .blk.iface { border-style:dashed; border-color:var(--llm); background:#fff7ed; }
+  .blk.einoi { border-style:dashed; border-color:var(--eino); background:#f1f5f9; }
+  .wire { display:flex; gap:18px; align-items:center; flex-wrap:wrap; }
+  .wire .col { flex:1 1 280px; }
+  .wire .arrows { flex:0 0 30px; font-size:26px; color:var(--line); display:flex; flex-direction:column; gap:44px; text-align:center; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid #e5e7eb; }
+  th { background:#f1f5f9; }
+</style>
+</head>
+<body>
+<main>
+<h1>go-eino-memory 架构图</h1>
+<p class="lead">核心原则：越往下越抽象，只依赖接口；具体实现只在 <code>cmd/demo</code> 组装一次。</p>
+
+<section aria-labelledby="s1">
+  <h2 id="s1">① 包依赖关系</h2>
+  <p class="hint">点击（或 Tab 聚焦）任意方块，高亮它的依赖并在下方显示说明。箭头方向 = “依赖于”。</p>
+  <svg id="dep" viewBox="0 0 1000 470" role="img" aria-label="包依赖关系图">
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#8a93a6"/></marker>
+    </defs>
+    <!-- 边：data-a / data-b 为两端节点。布局：memory 居中，所有连线都是直线、互不交叉 -->
+    <path class="edge" data-a="demo" data-b="agent" d="M440 84 L170 166" marker-end="url(#arr)"/>
+    <path class="edge" data-a="demo" data-b="memory" d="M500 84 L500 166" marker-end="url(#arr)"/>
+    <path class="edge" data-a="demo" data-b="llm" d="M560 84 L830 166" marker-end="url(#arr)"/>
+    <path class="edge" data-a="agent" data-b="memory" d="M262 205 L396 205" marker-end="url(#arr)"/>
+    <text class="elabel" data-a="agent" data-b="memory" x="329" y="194" text-anchor="middle">只用 Strategy 接口</text>
+    <path class="edge dash" data-a="llm" data-b="memory" d="M738 205 L604 205" marker-end="url(#arr)"/>
+    <text class="elabel" data-a="llm" data-b="memory" x="671" y="194" text-anchor="middle">隐式实现</text>
+    <text class="elabel" data-a="llm" data-b="memory" x="671" y="226" text-anchor="middle">TextGenerator</text>
+    <path class="edge" data-a="agent" data-b="eino" d="M160 240 L160 376" marker-end="url(#arr)"/>
+    <path class="edge" data-a="memory" data-b="eino" d="M500 240 L500 376" marker-end="url(#arr)"/>
+    <path class="edge" data-a="llm" data-b="eino" d="M780 240 L570 376" marker-end="url(#arr)"/>
+    <path class="edge" data-a="llm" data-b="ext" d="M860 240 L860 376" marker-end="url(#arr)"/>
+    <path class="edge" data-a="ext" data-b="eino" d="M718 415 L612 415" marker-end="url(#arr)"/>
+    <text class="elabel" data-a="ext" data-b="eino" x="665" y="440" text-anchor="middle">实现 eino 接口</text>
+
+    <!-- 节点 -->
+    <g class="node" data-id="demo" tabindex="0" role="button" aria-label="cmd/demo 组装层">
+      <rect x="400" y="20" width="200" height="64" stroke="#7c3aed"/>
+      <text x="500" y="48" fill="#7c3aed">cmd/demo</text><text class="sub" x="500" y="68">组装根 · 唯一见到具体类型</text></g>
+    <g class="node" data-id="agent" tabindex="0" role="button" aria-label="agent 编排层">
+      <rect x="60" y="168" width="200" height="72" stroke="#2563eb"/>
+      <text x="160" y="198" fill="#2563eb">agent</text><text class="sub" x="160" y="220">编排层 · eino Chain</text></g>
+    <g class="node" data-id="memory" tabindex="0" role="button" aria-label="memory 策略层">
+      <rect x="400" y="168" width="200" height="72" stroke="#15803d"/>
+      <text x="500" y="198" fill="#15803d">memory</text><text class="sub" x="500" y="220">策略层 · 9 种记忆</text></g>
+    <g class="node" data-id="llm" tabindex="0" role="button" aria-label="llm 适配层">
+      <rect x="740" y="168" width="200" height="72" stroke="#c2410c"/>
+      <text x="840" y="198" fill="#c2410c">llm</text><text class="sub" x="840" y="220">适配层 · 创建模型</text></g>
+    <g class="node" data-id="eino" tabindex="0" role="button" aria-label="eino 接口">
+      <rect x="60" y="378" width="550" height="72" stroke="#0f172a"/>
+      <text x="335" y="408" fill="#0f172a">eino（接口 + 编排）</text>
+      <text class="sub" x="335" y="430">model · prompt · compose · embedding · indexer · retriever · schema</text></g>
+    <g class="node" data-id="ext" tabindex="0" role="button" aria-label="eino-ext 实现">
+      <rect x="720" y="378" width="220" height="72" stroke="#475569"/>
+      <text x="830" y="408" fill="#475569">eino-ext</text><text class="sub" x="830" y="430">openai ChatModel / Embedder</text></g>
+  </svg>
+  <div class="legend"><span>import 依赖</span><span class="l-dash">隐式满足接口（无 import）</span></div>
+  <div id="info" aria-live="polite"><h3>点击上面的方块查看说明</h3><p>没有循环依赖：memory 不 import llm / agent；agent 不知道有哪 9 种策略。</p></div>
+</section>
+<section aria-labelledby="s2">
+  <h2 id="s2">② memory 内部：组合，而不是继承</h2>
+  <p class="hint">大框套小框 = “内部持有”。绿色实线是策略，橙色虚线是 memory 自己定义的接口，灰色虚线是 eino 接口。</p>
+  <div class="groups">
+    <div class="group">
+      <h3>只用内存（不调模型）</h3>
+      <div class="blk"><div class="t">SequentialMemory</div><div class="f">memory/basic.go</div></div>
+      <div class="blk"><div class="t">SlidingWindowMemory</div><div class="f">memory/basic.go</div></div>
+      <div class="blk"><div class="t">OSMemory</div><div class="f">memory/compression_os.go · RAM + Disk</div></div>
+    </div>
+    <div class="group">
+      <h3>依赖 TextGenerator（调 LLM）</h3>
+      <div class="blk"><div class="t">SummarizationMemory</div><div class="f">memory/summarization.go</div>
+        <div class="blk iface"><div class="t">TextGenerator</div></div></div>
+      <div class="blk"><div class="t">CompressionMemory</div><div class="f">memory/compression_os.go</div>
+        <div class="blk iface"><div class="t">TextGenerator</div></div></div>
+      <div class="blk"><div class="t">GraphMemory</div><div class="f">memory/graph.go</div>
+        <div class="blk iface"><div class="t">TextGenerator</div></div></div>
+    </div>
+    <div class="group">
+      <h3>组合型（复用其他策略）</h3>
+      <div class="blk"><div class="t">MemoryAugmentedMemory</div><div class="f">memory/augmented.go</div>
+        <div class="blk"><div class="t">SlidingWindowMemory</div><div class="f">短期窗口</div></div>
+        <div class="blk iface"><div class="t">TextGenerator</div><div class="f">抽取事实 → memoryTokens</div></div></div>
+      <div class="blk"><div class="t">HierarchicalMemory</div><div class="f">memory/augmented.go</div>
+        <div class="blk"><div class="t">SlidingWindowMemory</div><div class="f">工作记忆</div></div>
+        <div class="blk"><div class="t">RetrievalMemory</div><div class="f">长期记忆（命中关键词才提升）</div>
+          <div class="blk"><div class="t">InMemoryVectorStore</div><div class="f">memory/vectorstore.go</div>
+            <div class="blk einoi"><div class="t">embedding.Embedder</div></div></div></div></div>
+    </div>
+  </div>
+  <p class="hint" style="margin-top:12px"><code>InMemoryVectorStore</code> 实现了 eino 的 <code>indexer.Indexer</code> + <code>retriever.Retriever</code>，换成 Milvus / Redis / ES8 时上层策略不用改。</p>
+</section>
+
+<section aria-labelledby="s3">
+  <h2 id="s3">③ 一次 Chat 的执行流程</h2>
+  <p class="hint">蓝色虚线框内是 eino <code>compose.Chain</code>（会触发 callbacks）；写回记忆在 Chain 外，模型成功后才执行。</p>
+  <svg viewBox="0 0 1000 300" role="img" aria-label="Chat 执行流程">
+    <defs><marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#475569"/></marker></defs>
+    <rect x="150" y="18" width="640" height="150" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-dasharray="8 5" stroke-width="2"/>
+    <text x="166" y="40" font-size="13" fill="#2563eb" font-weight="600">compose.Chain[string, *schema.Message]  · agent/agent.go</text>
+    <g font-size="14" text-anchor="middle">
+      <rect x="20" y="72" width="100" height="56" rx="28" fill="#fff" stroke="#7c3aed" stroke-width="2"/><text x="70" y="105">query</text>
+      <rect x="170" y="64" width="170" height="72" rx="9" fill="#fff" stroke="#2563eb" stroke-width="2"/><text x="255" y="94" font-weight="600">Lambda</text><text x="255" y="116" font-size="12" fill="#5b6475">load_memory</text>
+      <rect x="390" y="64" width="170" height="72" rx="9" fill="#fff" stroke="#2563eb" stroke-width="2"/><text x="475" y="94" font-weight="600">ChatTemplate</text><text x="475" y="116" font-size="12" fill="#5b6475">FString: system + user</text>
+      <rect x="610" y="64" width="160" height="72" rx="9" fill="#fff" stroke="#2563eb" stroke-width="2"/><text x="690" y="94" font-weight="600">ChatModel</text><text x="690" y="116" font-size="12" fill="#5b6475">eino-ext openai</text>
+      <rect x="840" y="72" width="130" height="56" rx="28" fill="#fff" stroke="#7c3aed" stroke-width="2"/><text x="905" y="105">reply</text>
+      <rect x="170" y="214" width="240" height="62" rx="9" fill="#f0fdf4" stroke="#15803d" stroke-width="2"/><text x="290" y="242" font-weight="600">Strategy.GetContext</text><text x="290" y="263" font-size="12" fill="#5b6475">① 读记忆</text>
+      <rect x="620" y="214" width="240" height="62" rx="9" fill="#f0fdf4" stroke="#15803d" stroke-width="2"/><text x="740" y="242" font-weight="600">Strategy.AddMessage</text><text x="740" y="263" font-size="12" fill="#5b6475">④ 写回记忆（Chain 外）</text>
+    </g>
+    <g stroke="#475569" stroke-width="2" fill="none" marker-end="url(#arr2)">
+      <path d="M120 100 L168 100"/><path d="M340 100 L388 100"/><path d="M560 100 L608 100"/><path d="M770 100 L838 100"/>
+      <path d="M255 136 L255 212"/><path d="M905 128 C905 200 880 245 862 245"/>
+    </g>
+    <g font-size="12" fill="#5b6475">
+      <text x="350" y="155">map{system,context,query}</text><text x="566" y="155">[]*schema.Message</text>
+      <text x="262" y="185">返回 context</text><text x="915" y="200">成功后</text>
+    </g>
+  </svg>
+</section>
+<section aria-labelledby="s4">
+  <h2 id="s4">④ 组装：同一个 client，按接口拆开交给不同层</h2>
+  <p class="hint">cmd/demo/main.go 是唯一同时看到具体类型的地方。</p>
+  <div class="wire">
+    <div class="col">
+      <div class="blk" style="border-color:var(--llm);background:#fff7ed"><div class="t">llm.Client</div><div class="f">llm/client.go</div>
+        <div class="blk einoi"><div class="t">.Chat</div><div class="f">model.BaseChatModel</div></div>
+        <div class="blk einoi"><div class="t">.Embedder</div><div class="f">embedding.Embedder</div></div>
+        <div class="blk iface"><div class="t">client 本身</div><div class="f">有 GenerateText → 满足 TextGenerator</div></div></div>
+    </div>
+    <div class="col arrows" aria-hidden="true"><div>→</div><div>→</div><div>→</div></div>
+    <div class="col">
+      <div class="blk" style="border-color:var(--agent);background:#eff6ff"><div class="t">agent.New(ctx, client.Chat, mem)</div></div>
+      <div class="blk"><div class="t">NewRetrievalMemory(client.Embedder, 2)</div><div class="f">也用于 Hierarchical</div></div>
+      <div class="blk"><div class="t">NewSummarizationMemory(client, 4)</div><div class="f">也用于 Augmented / Graph / Compression</div></div>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="s5">
+  <h2 id="s5">⑤ 替换哪里，影响哪里</h2>
+  <table>
+    <thead><tr><th>你想改的</th><th>只需动</th><th>不受影响</th></tr></thead>
+    <tbody>
+      <tr><td>换模型（ark / ollama / qwen…）</td><td><code>llm/client.go</code></td><td>agent、memory</td></tr>
+      <tr><td>换向量库（Milvus / Redis / ES8）</td><td><code>memory/vectorstore.go</code> 或注入 eino-ext 实现</td><td>Retrieval / Hierarchical 策略、agent</td></tr>
+      <tr><td>加一种新记忆策略</td><td>新增文件实现 <code>memory.Strategy</code></td><td>agent、llm</td></tr>
+      <tr><td>改 Prompt / 加 Tools、Retriever 节点</td><td><code>agent/agent.go</code> 的 Chain</td><td>memory、llm</td></tr>
+      <tr><td>写测试</td><td>fakeLLM / fakeEmbedder / echoModel</td><td>不需要 API Key</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<script>
+// 包依赖图的交互：点击节点高亮相关边，并显示说明
+const INFO = {
+  demo:  { c:'#7c3aed', t:'cmd/demo · 组装根', f:'cmd/demo/main.go',
+           d:['唯一同时 import agent / llm / memory 的地方','创建 llm.Client，再按接口拆开传给策略和 Agent','scenarios 里是各策略的演示对话'] },
+  agent: { c:'#2563eb', t:'agent · 编排层', f:'agent/agent.go',
+           d:['依赖 model.BaseChatModel（eino）+ memory.Strategy（接口）','用 compose.Chain 编排 Lambda → ChatTemplate → ChatModel','不知道有哪 9 种策略，也不知道是 OpenAI'] },
+  llm:   { c:'#c2410c', t:'llm · 适配层', f:'llm/client.go',
+           d:['用 eino-ext openai 创建 ChatModel 和 Embedder，读环境变量','Client 字段是 eino 接口类型，换实现只改这里','GenerateText 方法让它隐式满足 memory.TextGenerator（虚线，无 import）'] },
+  memory:{ c:'#15803d', t:'memory · 策略层', f:'memory/*.go',
+           d:['对外只暴露 Strategy 接口：Name / AddMessage / GetContext / Clear','自己定义 TextGenerator 接口（接口放在使用方），不 import llm','InMemoryVectorStore 实现 eino Indexer + Retriever'] },
+  eino:  { c:'#0f172a', t:'eino · 接口与编排', f:'github.com/cloudwego/eino',
+           d:['所有层共同依赖的抽象：model / embedding / indexer / retriever / schema','compose 提供 Chain / Graph 编排与 callbacks'] },
+  ext:   { c:'#475569', t:'eino-ext · 具体实现', f:'eino-ext/components/{model,embedding}/openai',
+           d:['OpenAI 协议实现，可对接 SiliconFlow / DeepSeek / 通义等','只被 llm 包 import'] },
+};
+const svg = document.getElementById('dep');
+const info = document.getElementById('info');
+function select(id) {
+  svg.classList.add('focusing');
+  svg.querySelectorAll('.on').forEach(e => e.classList.remove('on'));
+  svg.querySelectorAll('.edge, .elabel').forEach(e => {
+    if (e.dataset.a === id || e.dataset.b === id) {
+      e.classList.add('on');
+      [e.dataset.a, e.dataset.b].forEach(n => svg.querySelector(`.node[data-id="${n}"]`).classList.add('on'));
+    }
+  });
+  svg.querySelector(`.node[data-id="${id}"]`).classList.add('on');
+  const it = INFO[id];
+  info.style.borderLeftColor = it.c;
+  info.innerHTML = `<h3 style="color:${it.c}">${it.t}</h3><code>${it.f}</code><ul>${it.d.map(x => `<li>${x}</li>`).join('')}</ul>`;
+}
+svg.querySelectorAll('.node').forEach(n => {
+  n.addEventListener('click', e => { e.stopPropagation(); select(n.dataset.id); });
+  n.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(n.dataset.id); } });
+});
+// 点击空白处取消高亮
+svg.addEventListener('click', () => { svg.classList.remove('focusing'); svg.querySelectorAll('.on').forEach(e => e.classList.remove('on')); });
+</script>
+</main>
+</body>
+</html>

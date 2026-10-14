@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>9 种记忆策略 · 代码讲解稿</title>
+<style>
+  body { margin:0; font:16px/1.7 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; color:#1a1a1a; background:#fff; }
+  .layout { display:flex; align-items:flex-start; }
+  .sidebar { position:sticky; top:0; height:100vh; overflow-y:auto; flex:0 0 160px; padding:24px 16px; border-right:1px solid #eee; font-size:14px; line-height:2.1; box-sizing:border-box; }
+  .sidebar .t { font-size:12px; color:#999; font-weight:600; margin-bottom:4px; }
+  .sidebar a { display:block; color:#1a56db; text-decoration:none; }
+  .sidebar a:hover { text-decoration:underline; }
+  main { flex:1; min-width:0; max-width:880px; padding:32px 28px 80px; }
+  @media (max-width:680px){ .sidebar{ display:none; } }
+  h1 { font-size:26px; margin:0 0 4px; }
+  .sub { color:#666; font-size:14px; margin:0 0 20px; }
+  section { border-top:1px solid #ddd; padding:22px 0; }
+  h2 { font-size:20px; margin:0 0 2px; }
+  h2 .n { color:#999; font-weight:400; }
+  .loc { color:#666; font-size:13px; margin:0 0 12px; }
+  code { font-family:Consolas,"JetBrains Mono",monospace; font-size:.9em; background:#f2f2f2; padding:1px 5px; border-radius:3px; }
+  /* 图文两栏 */
+  .row { display:flex; gap:26px; flex-wrap:wrap; align-items:flex-start; }
+  .fig { flex:0 0 300px; }
+  .text { flex:1 1 380px; min-width:0; }
+  /* 嵌套组合图：嵌套 = 内部持有 */
+  .blk { border:2px solid #15803d; border-radius:8px; padding:6px 10px; margin:6px 0; background:#fff; }
+  .blk .t { font-family:Consolas,monospace; font-weight:600; font-size:13px; }
+  .blk .f { color:#888; font-size:11px; }
+  .blk .blk { margin-left:14px; background:#f6f7f9; }
+  .blk.iface { border-style:dashed; border-color:#c2410c; background:#fff8f1; }
+  .blk.einoi { border-style:dashed; border-color:#475569; background:#f3f4f6; }
+  .blk.field { border:1px dashed #bbb; background:#fafafa; }
+  .blk.field .t { font-weight:400; font-size:12px; color:#444; }
+  .legend { font-size:12px; color:#666; margin-top:4px; }
+  .legend i { display:inline-block; width:14px; height:0; border-top:2px solid; vertical-align:middle; margin-right:4px; }
+  .legend .a i { border-color:#15803d; }
+  .legend .b i { border-color:#c2410c; border-top-style:dashed; }
+  .legend .c i { border-color:#475569; border-top-style:dashed; }
+  .legend .d i { border-color:#bbb; border-top-style:dashed; }
+  /* 文字 */
+  .lead { font-weight:600; margin:0 0 6px; }
+  p { margin:8px 0; }
+  ul { margin:6px 0; padding-left:22px; }
+  li { margin:3px 0; }
+  .tag { font-weight:600; }
+  .note { background:#fff8e6; border-left:3px solid #f0b429; padding:6px 12px; margin:10px 0; }
+  .note code { background:#f5ead0; }
+  .fit { color:#666; }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar">
+  <div class="t">策略</div>
+  <a href="#s1">1 顺序</a>
+  <a href="#s2">2 滑动窗口</a>
+  <a href="#s3">3 摘要</a>
+  <a href="#s4">4 检索</a>
+  <a href="#s5">5 记忆增强</a>
+  <a href="#s6">6 层次化</a>
+  <a href="#s7">7 图</a>
+  <a href="#s8">8 压缩</a>
+  <a href="#s9">9 OS</a>
+</nav>
+<main>
+<h1>9 种记忆策略 · 代码讲解稿</h1>
+<p class="sub">对着 <code>go-eino-memory/memory/</code> 讲。所有策略实现同一个接口，Agent 只依赖接口。</p>
+
+<section>
+<h2>开场：共同契约</h2>
+<p class="loc"><code>memory/memory.go</code> · <code>Strategy</code> 接口</p>
+<p class="lead">所有策略都实现这同一个接口，就四个方法：</p>
+<ul>
+<li><code>Name()</code> —— 返回策略名，日志用。</li>
+<li><code>AddMessage(ctx, userInput, aiResponse)</code> —— 写入一轮对话。</li>
+<li><code>GetContext(ctx, query)</code> —— 返回要拼进 Prompt 的上下文。</li>
+<li><code>Clear()</code> —— 清空。</li>
+</ul>
+<p>注意 <code>GetContext</code> 带 <code>query</code> 参数——顺序、滑动这些策略用不到它，但检索、图、OS 都要靠它做相关性查找。另外两个辅助类型 <code>Message</code>（角色 + 内容）和 <code>Turn</code>（一轮对话），加上 <code>formatMessages</code>、<code>formatTurn</code> 两个格式化函数，后面每个策略都会用到。</p>
+<p>记住一句话：<strong>这 9 种策略，本质都是在决定"这一轮上下文里放什么"</strong>，区别只是取舍方式不同。</p>
+<p class="legend" style="margin-top:14px">图例：
+  <span class="a"><i></i>策略类型（绿实线）</span>
+  <span class="b"><i></i>memory 自定接口 TextGenerator（橙虚线）</span>
+  <span class="c"><i></i>eino 标准接口（灰虚线）</span>
+  <span class="d"><i></i>数据字段（灰细线）</span>
+  &nbsp;·&nbsp; 嵌套 = 内部持有</p>
+</section>
+
+<section id="s1">
+<h2><span class="n">1</span> 顺序记忆 Sequential</h2>
+<p class="loc"><code>memory/basic.go</code> · <code>SequentialMemory</code></p>
+<div class="row">
+  <div class="fig">
+    <div class="blk"><div class="t">SequentialMemory</div><div class="f">memory/basic.go</div>
+      <div class="blk field"><div class="t">history []Message — 全量历史</div></div>
+    </div>
+  </div>
+  <div class="text">
+    <p class="lead">什么都不丢，全量塞给模型。它是后面所有策略的"基准线"。</p>
+    <ul>
+      <li><span class="tag">AddMessage：</span>把用户消息和助手消息依次 <code>append</code> 进 <code>history</code>，一条不落。</li>
+      <li><span class="tag">GetContext：</span>把整个 <code>history</code> 用 <code>formatMessages</code> 拼成文本，全量返回。</li>
+    </ul>
+    <div class="note">代价：token 随轮次线性增长，迟早撞上下文窗口。其他策略都是在它基础上做减法。</div>
+    <p class="fit"><strong>适合：</strong>demo、短对话、调试。</p>
+  </div>
+</div>
+</section>
+
+<section id="s2">
+<h2><span class="n">2</span> 滑动窗口 Sliding Window</h2>
+<p class="loc"><code>memory/basic.go</code> · <code>SlidingWindowMemory</code></p>
+<div class="row">
+  <div class="fig">
+    <div class="blk"><div class="t">SlidingWindowMemory</div><div class="f">memory/basic.go</div>
+      <div class="blk field"><div class="t">turns []Turn — 只留最近 N 轮</div></div>
+    </div>
+  </div>
+  <div class="text">
+    <p class="lead">只保留最近 N 轮，旧的自动丢弃。</p>
+    <ul>
+      <li><span class="tag">AddMessage：</span>追加一轮，如果 <code>len(turns) &gt; windowSize</code>，就只保留最后 N 轮。</li>
+      <li><span class="tag">GetContext：</span>把窗口内的轮次拼成消息列表返回。</li>
+    </ul>
+    <div class="note">实现细节：截断用 <code>append([]Turn(nil), turns[...]...)</code> 复制一份，而不是直接切子切片——否则旧元素占着底层数组，GC 收不掉。</div>
+    <p class="fit"><strong>效果：</strong>第 4 轮问第 1 轮的名字，窗口里已经没这信息了。<br><strong>适合：</strong>通用聊天，只看近期上下文。</p>
+  </div>
+</div>
+</section>
+
+<section id="s3">
+<h2><span class="n">3</span> 摘要记忆 Summarization</h2>
+<p class="loc"><code>memory/summarization.go</code> · <code>SummarizationMemory</code></p>
+<div class="row">
+  <div class="fig">
+    <div class="blk"><div class="t">SummarizationMemory</div><div class="f">memory/summarization.go</div>
+      <div class="blk iface"><div class="t">TextGenerator</div><div class="f">调 LLM 合并摘要</div></div>
+      <div class="blk field"><div class="t">runningSummary string</div></div>
+      <div class="blk field"><div class="t">buffer []Message</div></div>
+      <div class="blk field"><div class="t">threshold int</div></div>
+    </div>
+  </div>
+  <div class="text">
+    <p class="lead">消息先进缓冲区，满了让 LLM 合并成滚动摘要。第一个要调 LLM 的策略。</p>
+    <ul>
+      <li><span class="tag">AddMessage：</span>消息进 <code>buffer</code>；达到 <code>threshold</code> 就触发 <code>consolidate</code>。</li>
+      <li><span class="tag">consolidate：</span>把"旧摘要 + 缓冲区"拼成 prompt 交给 LLM，得到新摘要，覆盖 <code>runningSummary</code>，清空 <code>buffer</code>。</li>
+      <li><span class="tag">GetContext：</span>返回 <code>runningSummary</code> + 还没被摘要的 <code>buffer</code>。</li>
+    </ul>
+    <div class="note"><code>TextGenerator</code> 接口就一个 <code>GenerateText</code> 方法，定义在 <code>memory</code> 包自己里面，<code>llm.Client</code> 隐式实现它——这样 <code>memory</code> 不用 import <code>llm</code>。另外 <code>consolidate</code> 失败时不清空 buffer，避免丢数据。</div>
+    <p class="fit"><strong>适合：</strong>长对话、创作类，用 token 换信息密度。</p>
+  </div>
+</div>
+</section>
+
+<section id="s4">
+<h2><span class="n">4</span> 检索记忆 Retrieval（RAG）</h2>
+<p class="loc"><code>memory/retrieval.go</code> · <code>RetrievalMemory</code>，核心在 <code>memory/vectorstore.go</code></p>
+<div class="row">
+  <div class="fig">
+    <div class="blk"><div class="t">RetrievalMemory</div><div class="f">memory/retrieval.go</div>
+      <div class="blk"><div class="t">InMemoryVectorStore</div><div class="f">memory/vectorstore.go</div>
+        <div class="blk einoi"><div class="t">embedding.Embedder</div><div class="f">eino 接口</div></div>
+        <div class="blk einoi"><div class="t">Indexer + Retriever</div><div class="f">本 store 实现这两个 eino 接口</div></div>
+        <div class="blk field"><div class="t">docs · vectors</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="text">
+    <p class="lead">把历史向量化，查询时只取语义最相关的 topK 条。</p>
+    <ul>
+      <li><span class="tag">AddMessage：</span>把"用户说…"和"AI回复…"各存成一个文档，<code>Store</code> 时向量化写入。</li>
+      <li><span class="tag">GetContext：</span>把 query 向量化，<code>Retrieve</code> 用余弦相似度算 topK，拼成上下文。</li>
+    </ul>
+    <div class="note">关键设计：<code>InMemoryVectorStore</code> 同时实现 eino 的 <code>indexer.Indexer</code> 和 <code>retriever.Retriever</code>，所以生产环境换成 Milvus / Redis / ES8，策略代码一行不用改。另一个细节：<code>Retrieve</code> 返回文档前，连 <code>MetaData</code> 这个 map 一起深拷贝，否则写分数时会并发写同一个 map。</div>
+    <p class="fit"><strong>适合：</strong>问答、知识型 Agent，需要精确召回具体事实。</p>
+  </div>
+</div>
+</section>
+
+<section id="s5">
+<h2><span class="n">5</span> 记忆增强 Memory-Augmented</h2>
+<p class="loc"><code>memory/augmented.go</code> · <code>MemoryAugmentedMemory</code></p>
+<div class="row">
+  <div class="fig">
+    <div class="blk"><div class="t">MemoryAugmentedMemory</div><div class="f">memory/augmented.go</div>
+      <div class="blk"><div class="t">SlidingWindowMemory</div><div class="f">短期窗口</div></div>
+      <div class="blk iface"><div class="t">TextGenerator</div><div class="f">抽取长期事实</div></div>
+      <div class="blk field"><div class="t">memoryTokens []string — 长期便签</div></div>
+    </div>
+  </div>
+  <div class="text">
+    <p class="lead">短期窗口 + 长期"便签"。第一个组合型策略——内部持有另一个策略。</p>
+    <ul>
+      <li><span class="tag">AddMessage：</span>两步。先把本轮丢进 <code>recent</code> 短期窗口；再让 LLM 判断这轮有没有值得长期记住的事实，有就提炼成一句话存进 <code>memoryTokens</code>。</li>
+      <li><span class="tag">判断方式：</span>约定一个标记字符串 <code>"无重要事实"</code>，LLM 回复里含它就不存。</li>
+      <li><span class="tag">GetContext：</span>把 <code>memoryTokens</code> 列表 + <code>recent</code> 近期对话拼在一起。</li>
+    </ul>
+    <div class="note">效果：过敏、ID 这类关键事实不会随窗口滑走。代价：每轮多一次 LLM 调用。</div>
+    <p class="fit"><strong>适合：</strong>需要可靠记住用户偏好的个人助理。</p>
+  </div>
+</div>
+</section>
+
+<section id="s6">
+<h2><span class="n">6</span> 层次化记忆 Hierarchical</h2>
+<p class="loc"><code>memory/augmented.go</code> · <code>HierarchicalMemory</code></p>
+<div class="row">
+  <div class="fig">
+    <div class="blk"><div class="t">HierarchicalMemory</div><div class="f">memory/augmented.go</div>
+      <div class="blk"><div class="t">SlidingWindowMemory</div><div class="f">工作记忆</div></div>
+      <div class="blk"><div class="t">RetrievalMemory</div><div class="f">长期记忆</div>
+        <div class="blk"><div class="t">InMemoryVectorStore</div><div class="f">memory/vectorstore.go</div>
+          <div class="blk einoi"><div class="t">embedding.Embedder</div></div>
+        </div>
+      </div>
+      <div class="blk field"><div class="t">promotionKeywords []string</div></div>
+    </div>
+  </div>
+  <div class="text">
+    <p class="lead">两层：滑动窗口做工作记忆，向量检索做长期记忆。把策略 2 和策略 4 组合起来。</p>
+    <ul>
+      <li><span class="tag">AddMessage：</span>所有消息都进 <code>working</code>；只有含"记住 / 偏好 / 过敏"等关键词的消息才额外提升进 <code>longTerm</code>。</li>
+      <li><span class="tag">GetContext：</span>长期检索结果 + 最近工作记忆，两层拼一起。</li>
+    </ul>
+    <div class="note">和策略 5 的对比：5 用 LLM 判断哪些值得长期记，6 用关键词启发式判断——更便宜，但会漏掉没带关键词的重要信息。</div>
+    <p class="fit"><strong>适合：</strong>既要流畅闲聊、又要记关键信息的复杂 Agent。</p>
+  </div>
+</div>
+</section>
+
+<section id="s7">
+<h2><span class="n">7</span> 图记忆 Graph</h2>
+<p class="loc"><code>memory/graph.go</code> · <code>GraphMemory</code></p>
+<div class="row">
+  <div class="fig">
+    <div class="blk"><div class="t">GraphMemory</div><div class="f">memory/graph.go</div>
+      <div class="blk iface"><div class="t">TextGenerator</div><div class="f">抽取三元组</div></div>
+      <div class="blk field"><div class="t">nodes map — 实体</div></div>
+      <div class="blk field"><div class="t">edges map — 关系（存边上）</div></div>
+    </div>
+  </div>
+  <div class="text">
+    <p class="lead">把事实抽成 (主语, 关系, 宾语) 三元组，存成有向图，能回答需要跨事实推理的问题。</p>
+    <ul>
+      <li><span class="tag">extractTriples：</span>让 LLM 把文本抽成三元组，要求输出 JSON 数组；解析失败再用元组正则兜底。</li>
+      <li><span class="tag">AddMessage：</span>抽三元组，<code>subject</code>、<code>object</code> 加进节点，<code>subject → object</code> 加进边，关系挂在边上。</li>
+      <li><span class="tag">GetContext：</span>实体链接——找 query 里出现的节点，返回它的所有入边和出边。</li>
+    </ul>
+    <div class="note">实体链接用子串匹配而不是分词，所以中文（比如"告诉我关于Clara的项目"）也能命中节点 <code>Clara</code>。</div>
+    <p class="fit"><strong>适合：</strong>知识库、专家系统，需要关系推理的多跳问题。</p>
+  </div>
+</div>
+</section>
+
+<section id="s8">
+<h2><span class="n">8</span> 压缩记忆 Compression</h2>
+<p class="loc"><code>memory/compression_os.go</code> · <code>CompressionMemory</code></p>
+<div class="row">
+  <div class="fig">
+    <div class="blk"><div class="t">CompressionMemory</div><div class="f">memory/compression_os.go</div>
+      <div class="blk iface"><div class="t">TextGenerator</div><div class="f">压缩成一条事实</div></div>
+      <div class="blk field"><div class="t">facts []string</div></div>
+    </div>
+  </div>
+  <div class="text">
+    <p class="lead">每轮让 LLM 压缩成一条精简事实，只存事实列表。最省 token。</p>
+    <ul>
+      <li><span class="tag">AddMessage：</span>把本轮拼成文本，让 LLM 当"数据压缩器"提炼成一条事实，<code>append</code> 进 <code>facts</code>。</li>
+      <li><span class="tag">GetContext：</span>把 <code>facts</code> 用 <code>- </code> 拼成列表返回。</li>
+    </ul>
+    <div class="note">和摘要的区别：摘要保留叙事、合并多轮；压缩是每轮独立压成一条硬事实，语气和细节全丢。</div>
+    <p class="fit"><strong>适合：</strong>会议纪要、任务清单这类只关心事实的场景。</p>
+  </div>
+</div>
+</section>
+
+<section id="s9">
+<h2><span class="n">9</span> 类 OS 记忆 OS-Like</h2>
+<p class="loc"><code>memory/compression_os.go</code> · <code>OSMemory</code></p>
+<div class="row">
+  <div class="fig">
+    <div class="blk"><div class="t">OSMemory</div><div class="f">memory/compression_os.go</div>
+      <div class="blk field"><div class="t">active []pagedTurn — RAM</div></div>
+      <div class="blk field"><div class="t">passive map[int]string — Disk</div></div>
+      <div class="blk field"><div class="t">turnCount int</div></div>
+    </div>
+  </div>
+  <div class="text">
+    <p class="lead">模拟操作系统：RAM 只装最近几轮，满了换出到 Disk，命中时再"缺页"换入。</p>
+    <ul>
+      <li><span class="tag">AddMessage：</span>RAM 满时把最旧一轮换出到 <code>passive</code>，再把新轮追加进 <code>active</code>。</li>
+      <li><span class="tag">GetContext：</span>返回 <code>active</code>，然后做缺页判断：query 的关键词命中 <code>passive</code> 里某轮，就把它换入拼上。</li>
+      <li><span class="tag">queryTerms：</span>提取关键词——英文按空白切分取长度 &gt; 3 的词，中文用相邻双字（bigram）。</li>
+    </ul>
+    <div class="note">两个细节：Go 的 map 遍历顺序随机，遍历 <code>passive</code> 前先对轮次号排序，否则输出不稳定；中文没有空格分词，加 bigram 匹配，否则"发射代码"这种纯中文问题永远触发不了缺页。</div>
+    <p class="fit"><strong>适合：</strong>跨天、跨周的长期运行 Agent。</p>
+  </div>
+</div>
+</section>
+
+<section>
+<h2>收束</h2>
+<p>9 种策略，从"全放"到"只放最相关"，本质是 token 成本和信息保真之间的权衡。没有最优解，只看你的 Agent 需要记什么、记多久、要多精确。</p>
+</section>
+</main>
+</div>
+</body>
+</html>

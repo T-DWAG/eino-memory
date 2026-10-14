@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>go-eino-memory 阅读顺序</title>
+<style>
+  :root { --bg:#f6f7fb; --card:#fff; --ink:#1f2430; --muted:#5b6475; --line:#d6dbe4;
+          --s0:#64748b; --s1:#7c3aed; --s2:#15803d; --s3:#2563eb; --s4:#c2410c; --s5:#0e7490; --s6:#be185d; --s7:#475569; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.65 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--ink); }
+  main { max-width:960px; margin:0 auto; padding:28px 20px 60px; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  .lead { color:var(--muted); margin:0 0 16px; }
+  code { font-family:Consolas,"JetBrains Mono",monospace; font-size:.92em; background:#eef1f6; padding:1px 5px; border-radius:4px; }
+  /* 顶部：进度 + 路线图 */
+  .top { position:sticky; top:0; z-index:5; background:var(--bg); padding:10px 0 12px; }
+  .bar { height:10px; background:#e5e7eb; border-radius:99px; overflow:hidden; }
+  .bar > i { display:block; height:100%; width:0; background:linear-gradient(90deg,#7c3aed,#2563eb,#15803d); transition:width .3s; }
+  .bar-txt { display:flex; justify-content:space-between; font-size:13px; color:var(--muted); margin-top:4px; }
+  .bar-txt button { font:inherit; border:1px solid var(--line); background:#fff; border-radius:6px; padding:1px 10px; cursor:pointer; color:var(--muted); }
+  .map { display:flex; flex-wrap:wrap; gap:6px; margin:14px 0 4px; }
+  .map a { flex:1 1 100px; text-decoration:none; color:#fff; border-radius:8px; padding:6px 8px; font-size:13px; line-height:1.3; position:relative; }
+  .map a b { display:block; font-size:12px; opacity:.85; font-weight:400; }
+  .map a.done::after { content:"✓"; position:absolute; right:8px; top:6px; font-weight:700; }
+  .map a:focus-visible { outline:3px solid #111; outline-offset:2px; }
+  .note { background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:8px 12px; font-size:14px; margin:10px 0 18px; }
+  /* 阶段卡片 */
+  .stage { background:var(--card); border-radius:12px; margin-bottom:18px; box-shadow:0 1px 3px rgba(0,0,0,.08); border-left:6px solid var(--c); scroll-margin-top:150px; }
+  .stage > header { padding:14px 18px 6px; display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  .stage h2 { margin:0; font-size:18px; color:var(--c); }
+  .stage .meta { font-size:13px; color:var(--muted); }
+  .stage .goal { margin:0 18px 8px; color:var(--muted); font-size:14px; }
+  .step { display:grid; grid-template-columns:28px 1fr; gap:4px 10px; padding:10px 18px; border-top:1px solid #eef0f4; }
+  .step input { width:18px; height:18px; margin-top:3px; accent-color:var(--c); cursor:pointer; }
+  .step label { font-weight:600; cursor:pointer; }
+  .step label .path { font-family:Consolas,monospace; color:var(--c); }
+  .step .body { grid-column:2; font-size:14px; }
+  .step .body ul { margin:2px 0; padding-left:18px; }
+  .step.checked label { text-decoration:line-through; color:var(--muted); }
+  .step.checked .body { opacity:.55; }
+  .q { grid-column:2; margin-top:4px; }
+  .q summary { cursor:pointer; color:var(--c); font-size:13px; font-weight:600; }
+  .q p { margin:4px 0 0; font-size:14px; background:#f8fafc; padding:6px 10px; border-radius:6px; }
+  pre.cmd { grid-column:2; margin:4px 0 0; background:#0f172a; color:#e2e8f0; padding:8px 12px; border-radius:6px; font-size:13px; overflow:auto; }
+  .tag { display:inline-block; font-size:12px; padding:0 7px; border-radius:99px; background:#eef1f6; color:var(--muted); margin-left:6px; font-weight:400; }
+</style>
+</head>
+<body>
+<main>
+<h1>go-eino-memory 阅读顺序</h1>
+<p class="lead">从接口到实现、从简单到复杂。每一步都建立在前一步上，跳着读会卡住。路径相对于 <code>go-eino-memory/</code>。</p>
+
+<div class="top">
+  <div class="bar" role="progressbar" aria-label="阅读进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar"><i></i></div>
+  <div class="bar-txt"><span id="bartxt">0 / 0 已完成</span><button type="button" id="reset">重置进度</button></div>
+  <nav class="map" aria-label="阶段导航">
+    <a href="#st0" style="background:var(--s0)">0 热身<b>5 min</b></a>
+    <a href="#st1" style="background:var(--s1)">1 契约<b>10 min</b></a>
+    <a href="#st2" style="background:var(--s2)">2 最简实现<b>10 min</b></a>
+    <a href="#st3" style="background:var(--s3)">3 Agent + eino<b>20 min</b></a>
+    <a href="#st4" style="background:var(--s4)">4 接真实模型<b>15 min</b></a>
+    <a href="#st5" style="background:var(--s5)">5 调 LLM 的策略<b>25 min</b></a>
+    <a href="#st6" style="background:var(--s6)">6 向量检索<b>25 min</b></a>
+    <a href="#st7" style="background:var(--s7)">7 OS 记忆 + 练习<b>20 min</b></a>
+  </nav>
+</div>
+<p class="note">进度保存在浏览器本地（localStorage），关掉页面再打开也在。每步下面的「自测」先自己想，再展开看答案。</p>
+
+<section class="stage" id="st0" style="--c:var(--s0)">
+  <header><h2>阶段 0 · 热身</h2><span class="meta">先看全貌，确认能跑</span></header>
+  <p class="goal">目标：知道有哪几个包、谁依赖谁，本地测试是绿的。</p>
+  <div class="step"><input type="checkbox" id="c01"><label for="c01"><span class="path">docs/architecture.html</span> 的图 ①</label>
+    <div class="body">只看包依赖图，把 6 个方块逐个点一遍。其他图先不看，读完代码再回来对照。</div></div>
+  <div class="step"><input type="checkbox" id="c02"><label for="c02"><span class="path">README.md</span> 的「目录结构」和「策略对比」</label>
+    <div class="body">把策略对比表当成之后的索引，第一遍不用记。</div></div>
+  <div class="step"><input type="checkbox" id="c03"><label for="c03">跑一次离线测试</label>
+    <pre class="cmd">cd go-eino-memory
+go test ./...</pre>
+    <div class="body">不需要 API Key。看到两个 <code>ok</code> 就说明环境没问题。</div></div>
+</section>
+
+<section class="stage" id="st1" style="--c:var(--s1)">
+  <header><h2>阶段 1 · 契约：两个接口</h2><span class="meta">整个项目的骨架</span></header>
+  <p class="goal">目标：理解「记忆策略」和「调 LLM」都被抽象成了接口，后面所有代码都围绕它们展开。</p>
+  <div class="step"><input type="checkbox" id="c11"><label for="c11"><span class="path">memory/memory.go</span><span class="tag">全文 66 行</span></label>
+    <div class="body"><ul>
+      <li><code>Strategy</code> 接口（L14）：4 个方法，都带 <code>context.Context</code> 和错误返回值</li>
+      <li><code>Message</code> / <code>Turn</code>：策略内部存储用的数据结构</li>
+      <li><code>formatMessages</code> / <code>formatTurn</code>：各策略共用的格式化函数，后面会反复见到</li>
+    </ul></div>
+    <details class="q"><summary>自测：为什么 GetContext 要接收 query，而顺序记忆明明用不到？</summary>
+      <p>接口要覆盖所有策略。检索、图、OS 换页都要用 query 做相关性查找，用不到的策略写成 <code>_ string</code> 忽略就行。</p></details></div>
+  <div class="step"><input type="checkbox" id="c12"><label for="c12"><span class="path">memory/summarization.go</span><span class="tag">只看 L9–L13</span></label>
+    <div class="body"><code>TextGenerator</code> 接口只有一个方法。重点是它定义在 <code>memory</code> 包里，而不是 <code>llm</code> 包里。</div>
+    <details class="q"><summary>自测：如果把 TextGenerator 挖到 llm 包里定义，会发生什么？</summary>
+      <p>memory 就得 import llm，依赖反了方向；写 memory 的测试也会连带引入 eino-ext openai。接口放在使用方，是 Go 的常见做法。</p></details></div>
+</section>
+<section class="stage" id="st2" style="--c:var(--s2)">
+  <header><h2>阶段 2 · 最简实现</h2><span class="meta">纯内存，不调模型</span></header>
+  <p class="goal">目标：看懂一个策略的完整样子（锁 + 四个方法），后面的策略都是这个模板。</p>
+  <div class="step"><input type="checkbox" id="c21"><label for="c21"><span class="path">memory/basic.go</span><span class="tag">全文 110 行</span></label>
+    <div class="body"><ul>
+      <li><code>SequentialMemory</code>：最简单的策略，留意 <code>sync.RWMutex</code> 的用法</li>
+      <li><code>SlidingWindowMemory</code>：用切片截断保留最近 N 轮（L80）</li>
+    </ul></div>
+    <details class="q"><summary>自测：截断时为什么用 append([]Turn(nil), ...) 复制一份，而不是直接 m.turns = m.turns[1:]？</summary>
+      <p>直接切片会一直引用同一个底层数组，前面被丢弃的元素无法被 GC 回收。复制一份后旧数组就能释放。</p></details></div>
+  <div class="step"><input type="checkbox" id="c22"><label for="c22"><span class="path">memory/memory_test.go</span><span class="tag">只看 TestSlidingWindowDropsOldest（L43）</span></label>
+    <div class="body">看滑动窗口的效果：第 3 轮后名字被淘汰。</div>
+    <pre class="cmd">go test ./memory -run SlidingWindow -v</pre></div>
+</section>
+
+<section class="stage" id="st3" style="--c:var(--s3)">
+  <header><h2>阶段 3 · Agent 与 eino 编排</h2><span class="meta">整个项目中 eino 用得最多的地方</span></header>
+  <p class="goal">目标：看懂一次 Chat 是怎么用 compose.Chain 串起来的。读完可以回头看 architecture.html 的图 ③。</p>
+  <div class="step"><input type="checkbox" id="c31"><label for="c31"><span class="path">agent/agent.go</span> 的包注释 + <code>New</code><span class="tag">L1–L100</span></label>
+    <div class="body"><ul>
+      <li>L67 <code>InvokableLambda</code>：把「读记忆」包成一个节点，输出模板变量 <code>map[string]any</code></li>
+      <li>L82 <code>prompt.FromMessages(schema.FString, ...)</code>：系统提示词也当变量传入</li>
+      <li>L87 <code>NewChain[string, *schema.Message]</code> → Append 三个节点 → L93 <code>Compile</code></li>
+    </ul></div>
+    <details class="q"><summary>自测：系统提示词为什么写成 "{system}" 变量，而不是直接写死在模板里？</summary>
+      <p>FString 会把模板里的 {xxx} 当作占位符。如果用户自定义的提示词里有花括号，写死会渲染报错。变量的“值”里有花括号则没问题。</p></details></div>
+  <div class="step"><input type="checkbox" id="c32"><label for="c32"><span class="path">agent/agent.go</span> 的 <code>Chat</code><span class="tag">L106–L133</span></label>
+    <div class="body">L114 <code>Invoke</code> 跑 Chain；L121 读取模型返回的真实 token 用量；L127 成功后才写回记忆。</div>
+    <details class="q"><summary>自测：为什么 AddMessage 不放在 Chain 里做最后一个节点？</summary>
+      <p>放在外面能保证只有模型成功才写记忆，写失败也不影响本轮回复。代价是这一步不在 eino callbacks 里。两种都行，是取舍。</p></details></div>
+  <div class="step"><input type="checkbox" id="c33"><label for="c33"><span class="path">agent/agent_test.go</span><span class="tag">全文 51 行</span></label>
+    <div class="body"><code>echoModel</code> 实现了 <code>model.BaseChatModel</code>，可以直接看到模板渲染后实际发给模型的消息。想在 eino 里 mock 模型，可以参考这个写法。</div>
+    <pre class="cmd">go test ./agent -v</pre></div>
+</section>
+
+<section class="stage" id="st4" style="--c:var(--s4)">
+  <header><h2>阶段 4 · 接上真实模型</h2><span class="meta">适配层 + 组装根</span></header>
+  <p class="goal">目标：知道具体实现从哪里来，又是在哪里按接口拆开交给各层的。跑通第一次真实对话。</p>
+  <div class="step"><input type="checkbox" id="c41"><label for="c41"><span class="path">llm/client.go</span><span class="tag">全文 120 行</span></label>
+    <div class="body"><code>ConfigFromEnv</code> → <code>NewClient</code>（eino-ext openai 的两个构造函数）→ <code>GenerateText</code>。留意 <code>Client</code> 的字段类型是 eino 接口，而不是具体的 openai 类型。</div></div>
+  <div class="step"><input type="checkbox" id="c42"><label for="c42"><span class="path">cmd/demo/main.go</span><span class="tag">先看 main 和 run（L112–）</span></label>
+    <div class="body">L143 <code>agent.New(ctx, client.Chat, mem)</code> 和各 <code>build</code> 函数里，同一个 client 被拆成不同接口。<code>scenarios</code> 里的对话等读到对应策略时再回来查。</div>
+    <pre class="cmd">$env:OPENAI_API_KEY="sk-xxx"     # PowerShell
+go run ./cmd/demo -s sequential
+go run ./cmd/demo -s sliding</pre>
+    <details class="q"><summary>自测：想换成火山方舟 Ark 模型，需要改哪些文件？</summary>
+      <p>只改 llm/client.go，把 chatopenai.NewChatModel 换成 eino-ext 的 ark.NewChatModel。agent 和 memory 一行不动。</p></details></div>
+</section>
+<section class="stage" id="st5" style="--c:var(--s5)">
+  <header><h2>阶段 5 · 调 LLM 的策略</h2><span class="meta">都依赖 TextGenerator，按难度递增</span></header>
+  <p class="goal">目标：理解「LLM 作为工具」的几种用法：压缩、摘要、抽取事实、抽取结构化数据。每读完一个就跑对应的 demo。</p>
+  <div class="step"><input type="checkbox" id="c51"><label for="c51"><span class="path">memory/compression_os.go</span> 上半部分 <code>CompressionMemory</code><span class="tag">L1–L70</span></label>
+    <div class="body">最简单的用法：每轮调一次 LLM，把结果存进列表。</div>
+    <pre class="cmd">go run ./cmd/demo -s compression</pre></div>
+  <div class="step"><input type="checkbox" id="c52"><label for="c52"><span class="path">memory/summarization.go</span><span class="tag">全文 94 行</span></label>
+    <div class="body">多了缓冲区和阈值。留意 <code>consolidate</code> 失败时不清空缓冲区。</div>
+    <pre class="cmd">go run ./cmd/demo -s summary</pre>
+    <details class="q"><summary>自测：consolidate 是在持有锁的情况下调 LLM，有什么影响？</summary>
+      <p>摘要期间其他读写会被阻塞。Agent.Chat 本来就是串行的，所以 demo 里没影响；做成高并发服务时可以改成「拷出缓冲区 → 解锁 → 调 LLM → 再加锁写回」。</p></details></div>
+  <div class="step"><input type="checkbox" id="c53"><label for="c53"><span class="path">memory/augmented.go</span> 上半部分 <code>MemoryAugmentedMemory</code><span class="tag">L1–L88</span></label>
+    <div class="body">第一个组合型策略：内部持有一个 <code>SlidingWindowMemory</code>。<code>noFactMarker</code>（L25）用来和 LLM 约定「没有需要记住的事实」。</div>
+    <pre class="cmd">go run ./cmd/demo -s augmented</pre></div>
+  <div class="step"><input type="checkbox" id="c54"><label for="c54"><span class="path">memory/graph.go</span><span class="tag">全文 156 行</span></label>
+    <div class="body"><ul>
+      <li>L67 <code>extractTriples</code>：先按 JSON 解析，失败了再用元组正则兜底</li>
+      <li>L117 <code>GetContext</code>：用子串匹配做实体链接，中文也能用</li>
+    </ul></div>
+    <pre class="cmd">go test ./memory -run Graph -v
+go run ./cmd/demo -s graph</pre></div>
+</section>
+
+<section class="stage" id="st6" style="--c:var(--s6)">
+  <header><h2>阶段 6 · 向量检索</h2><span class="meta">自己实现 eino 的 Indexer / Retriever</span></header>
+  <p class="goal">目标：学会怎么实现 eino 的标准组件接口，理解从底层向量库到层次化记忆是怎么一层层叠上去的。</p>
+  <div class="step"><input type="checkbox" id="c61"><label for="c61"><span class="path">memory/vectorstore.go</span><span class="tag">全文 171 行</span></label>
+    <div class="body"><ul>
+      <li>L35 的 <code>var _ indexer.Indexer = ...</code>：在编译期检查是否实现了接口</li>
+      <li><code>Store</code> / <code>Retrieve</code> 里的 <code>GetCommonOptions</code>：eino 组件处理 Option 的标准写法</li>
+      <li><code>cosine</code>：用余弦相似度衡量文本相关度</li>
+    </ul></div>
+    <details class="q"><summary>自测：Retrieve 里为什么要复制文档，还要单独复制 MetaData？</summary>
+      <p>WithScore 会往 MetaData 这个 map 里写分数。不复制，就是在读锁外面改存储里的原始文档；只做浅拷贝，两份文档仍共享同一个 map。两种情况在并发检索时都会出现数据竞争，所以要连 map 一起复制。</p></details></div>
+  <div class="step"><input type="checkbox" id="c62"><label for="c62"><span class="path">memory/retrieval.go</span><span class="tag">全文 73 行</span></label>
+    <div class="body">只是在向量库外面包了一层。用户输入和 AI 回复各存成一个文档。</div>
+    <pre class="cmd">go run ./cmd/demo -s retrieval</pre></div>
+  <div class="step"><input type="checkbox" id="c63"><label for="c63"><span class="path">memory/augmented.go</span> 下半部分 <code>HierarchicalMemory</code><span class="tag">L89–L158</span></label>
+    <div class="body">把之前读过的两个策略组合起来：滑动窗口做工作记忆，检索记忆做长期记忆。对照 architecture.html 图 ② 右侧那一列。</div>
+    <pre class="cmd">go test ./memory -run "Retrieval|Hierarchical" -v
+go run ./cmd/demo -s hierarchical</pre></div>
+</section>
+<section class="stage" id="st7" style="--c:var(--s7)">
+  <header><h2>阶段 7 · OS 记忆 + 动手练习</h2><span class="meta">收尾</span></header>
+  <p class="goal">目标：读完最后一个策略，然后动手改一个小功能，验证自己真的读懂了。</p>
+  <div class="step"><input type="checkbox" id="c71"><label for="c71"><span class="path">memory/compression_os.go</span> 下半部分 <code>OSMemory</code><span class="tag">L71–L204</span></label>
+    <div class="body">RAM 满了就换出，查询命中就换入。<code>queryTerms</code>（L171）里的中文双字匹配用来处理中文分词。</div>
+    <pre class="cmd">go test ./memory -run OSMemory -v
+go run ./cmd/demo -s os</pre>
+    <details class="q"><summary>自测：为什么遍历 passive 前要先排序 ids？</summary>
+      <p>Go 的 map 遍历顺序是随机的。不排序的话，每次换入的顺序都可能不同，发给模型的 Prompt 也就不稳定。</p></details></div>
+  <div class="step"><input type="checkbox" id="c72"><label for="c72">练习 A：给 OSMemory 换成向量换页<span class="tag">综合阶段 2 + 6</span></label>
+    <div class="body">把关键词匹配换成 <code>InMemoryVectorStore</code>：换出时 <code>Store</code>，查询时 <code>Retrieve</code>。测试里可以直接用 <code>fakeEmbedder</code>。</div></div>
+  <div class="step"><input type="checkbox" id="c73"><label for="c73">练习 B：给 Agent 加 eino callbacks<span class="tag">综合阶段 3</span></label>
+    <div class="body">用 <code>callbacks.NewHandlerBuilder()</code> 写一个 handler，在 <code>Invoke</code> 时用 <code>compose.WithCallbacks</code> 传进去，打印每个节点的耗时。</div></div>
+  <div class="step"><input type="checkbox" id="c74"><label for="c74">练习 C：支持多会话<span class="tag">综合全部</span></label>
+    <div class="body">现在一个 Agent 只对应一个记忆。可以做一个 <code>map[sessionID]memory.Strategy</code> 加一个工厂函数，让 <code>Chat</code> 接收 sessionID。</div></div>
+</section>
+</main>
+<script>
+// 阅读进度：勾选状态存在 localStorage，并同步到进度条和顶部导航的 ✓
+const KEY = 'go-eino-memory-reading';
+const boxes = [...document.querySelectorAll('.step input[type=checkbox]')];
+let saved = {};
+try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { saved = {}; }
+
+function render() {
+  const done = boxes.filter(b => b.checked).length;
+  const pct = Math.round(done / boxes.length * 100);
+  const bar = document.getElementById('bar');
+  bar.firstElementChild.style.width = pct + '%';
+  bar.setAttribute('aria-valuenow', pct);
+  document.getElementById('bartxt').textContent = `${done} / ${boxes.length} 已完成（${pct}%）`;
+  boxes.forEach(b => b.closest('.step').classList.toggle('checked', b.checked));
+  // 某个阶段全部勾完，导航上就打 ✓
+  document.querySelectorAll('.stage').forEach(st => {
+    const bs = [...st.querySelectorAll('input[type=checkbox]')];
+    const link = document.querySelector(`.map a[href="#${st.id}"]`);
+    if (link) link.classList.toggle('done', bs.length > 0 && bs.every(b => b.checked));
+  });
+}
+
+boxes.forEach(b => {
+  b.checked = !!saved[b.id];
+  b.addEventListener('change', () => {
+    saved[b.id] = b.checked;
+    localStorage.setItem(KEY, JSON.stringify(saved));
+    render();
+  });
+});
+document.getElementById('reset').addEventListener('click', () => {
+  saved = {};
+  localStorage.removeItem(KEY);
+  boxes.forEach(b => { b.checked = false; });
+  render();
+});
+render();
+</script>
+</body>
+</html>

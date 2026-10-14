@@ -1,0 +1,29 @@
+# 编译产物
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go 工作区
+/bin/
+/vendor/
+go.work
+go.work.sum
+
+# 环境变量 / 密钥
+.env
+.env.local
+*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
